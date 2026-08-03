@@ -11,56 +11,133 @@ button{background:#fff2;border:1px solid #fff;color:#fff;padding:6px;border-radi
 button.on{background:#fff;color:#000342}
 button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
 input[type=range]{width:70px}
-#cursor{position:fixed;cursor:grab;border:2px solid #fff;display:none;transform:translate(-50%,-50%);z-index:3}
+#cursor{position:fixed;cursor:grab;border:2px solid #fff;background:#fff3;display:none;transform:translate(-50%,-50%);z-index:3}
+#cursor.eraseMode{background:transparent;border-style:dashed}
+#resizeHandle{position:absolute;bottom:-6px;right:-6px;width:16px;height:16px;background:#fff;border:2px solid #000342;border-radius:50%;cursor:nwse-resize;touch-action:none;z-index:4}
+#toggleHandle{position:absolute;top:-10px;left:-10px;width:20px;height:20px;background:#fff;border:2px solid #000342;border-radius:50%;cursor:pointer;touch-action:none;z-index:5;display:flex;align-items:center;justify-content:center}
+#toggleHandle svg{width:12px;height:12px;fill:none;stroke:#000342;stroke-width:2}
 </style></head>
 <body>
 <canvas id="c"></canvas>
-<div id="cursor"></div>
-<div id="ui">
-  <button id="penBtn" class="on"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-  <input id="penSize" type="range" min="1" max="50" value="4">
-  <button id="eraserBtn"><svg viewBox="0 0 24 24"><path d="M20 20H8l-5-5a2 2 0 0 1 0-2.8L13 3l8 8-7 7"/></svg></button>
-  <input id="eraserSize" type="range" min="5" max="100" value="25">
+<div id="cursor">
+  <div id="toggleHandle"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+  <div id="resizeHandle"></div>
 </div>
 <script>
 const c=document.getElementById('c'),ctx=c.getContext('2d');
-const resize=()=>{c.width=c.clientWidth;c.height=c.clientHeight};
+let dpr=Math.max(1,window.devicePixelRatio||1);
+const resize=()=>{
+  dpr=Math.max(1,window.devicePixelRatio||1);
+  c.width=c.clientWidth*dpr;
+  c.height=c.clientHeight*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap=ctx.lineJoin='round';
+};
 resize();addEventListener('resize',resize);
-ctx.lineCap=ctx.lineJoin='round';
 
-let mode='pen',drawing=false,erasing=false;
-const penBtn=document.getElementById('penBtn'),eraserBtn=document.getElementById('eraserBtn');
-const penSize=document.getElementById('penSize'),eraserSize=document.getElementById('eraserSize');
+let mode='pen',dragging=false,drawing=false;
 const cursor=document.getElementById('cursor');
+const resizeHandle=document.getElementById('resizeHandle');
+const toggleHandle=document.getElementById('toggleHandle');
+let eraserSizeVal=45,penSizeVal=4;
+let cursorVisible=false;
+
 const placeBox=(x,y)=>{cursor.style.left=x+'px';cursor.style.top=y+'px'};
-placeBox(innerWidth/2,innerHeight/2);
-const setMode=m=>{mode=m;penBtn.classList.toggle('on',m==='pen');eraserBtn.classList.toggle('on',m==='eraser');cursor.style.display=m==='eraser'?'block':'none'};
-penBtn.onclick=()=>setMode('pen');
-eraserBtn.onclick=()=>setMode('eraser');
-eraserSize.oninput=()=>{cursor.style.width=cursor.style.height=eraserSize.value+'px'};
-eraserSize.oninput();
+
+const applyModeVisual=()=>{
+  cursor.classList.toggle('eraseMode',mode==='eraser');
+  const size=mode==='eraser'?eraserSizeVal:penSizeVal;
+  cursor.style.width=cursor.style.height=size+'px';
+};
+const setSize=v=>{
+  const clamped=mode==='eraser'?Math.max(5,Math.min(300,v)):Math.max(1,Math.min(80,v));
+  if(mode==='eraser')eraserSizeVal=clamped;else penSizeVal=clamped;
+  applyModeVisual();
+};
+applyModeVisual();
+
+const showCursor=(x,y)=>{cursorVisible=true;cursor.style.display='block';placeBox(x,y)};
+const hideCursor=()=>{cursorVisible=false;cursor.style.display='none'};
+
+toggleHandle.onpointerdown=e=>{
+  e.stopPropagation();
+  mode=mode==='pen'?'eraser':'pen';
+  applyModeVisual();
+};
+
+let resizing=false,startDist=0,startSize=0;
+resizeHandle.onpointerdown=e=>{
+  e.stopPropagation();
+  resizing=true;
+  resizeHandle.setPointerCapture(e.pointerId);
+  const r=cursor.getBoundingClientRect();
+  const cx=r.left+r.width/2,cy=r.top+r.height/2;
+  startDist=Math.hypot(e.clientX-cx,e.clientY-cy);
+  startSize=mode==='eraser'?eraserSizeVal:penSizeVal;
+};
+resizeHandle.onpointermove=e=>{
+  if(!resizing)return;
+  e.stopPropagation();
+  const r=cursor.getBoundingClientRect();
+  const cx=r.left+r.width/2,cy=r.top+r.height/2;
+  const dist=Math.hypot(e.clientX-cx,e.clientY-cy);
+  setSize(startSize+(dist-startDist)*2);
+};
+resizeHandle.onpointerup=e=>{e.stopPropagation();resizing=false};
 
 const pos=e=>{const r=c.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
 
-c.onpointerdown=e=>{if(mode!=='pen')return;drawing=true;ctx.beginPath();ctx.moveTo(...pos(e))};
+const strokeTo=(lastX,lastY,x,y,m)=>{
+  ctx.globalCompositeOperation=m==='eraser'?'destination-out':'source-over';
+  if(m==='pen')ctx.strokeStyle='#fff';
+  ctx.lineWidth=m==='eraser'?eraserSizeVal:penSizeVal;
+  const midX=(lastX+x)/2,midY=(lastY+y)/2;
+  ctx.quadraticCurveTo(lastX,lastY,midX,midY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(midX,midY);
+  return[x,y];
+};
+
+const DOUBLE_TAP_MS=350,DOUBLE_TAP_DIST=30;
+let lastTapTime=0,lastTapX=0,lastTapY=0,skipStroke=false;
+let canvasLastX=0,canvasLastY=0;
+c.onpointerdown=e=>{
+  const[x,y]=pos(e);
+  const now=Date.now();
+  const isDoubleTap=(now-lastTapTime<DOUBLE_TAP_MS)&&Math.hypot(x-lastTapX,y-lastTapY)<DOUBLE_TAP_DIST;
+  if(isDoubleTap){
+    skipStroke=true;
+    drawing=false;
+    lastTapTime=0;
+    mode='eraser';
+    applyModeVisual();
+    showCursor(e.clientX,e.clientY);
+    return;
+  }
+  skipStroke=false;
+  lastTapTime=now;lastTapX=x;lastTapY=y;
+  drawing=true;
+  [canvasLastX,canvasLastY]=[x,y];
+  ctx.beginPath();ctx.moveTo(x,y);
+};
 c.onpointermove=e=>{
-  if(mode!=='pen'||!drawing)return;
-  ctx.globalCompositeOperation='source-over';
-  ctx.strokeStyle='#fff';
-  ctx.lineWidth=penSize.value;
-  ctx.lineTo(...pos(e));ctx.stroke();
+  if(!drawing||skipStroke)return;
+  if(cursorVisible)hideCursor();
+  const[x,y]=pos(e);
+  [canvasLastX,canvasLastY]=strokeTo(canvasLastX,canvasLastY,x,y,'pen');
 };
 
-cursor.onpointerdown=e=>{erasing=true;cursor.setPointerCapture(e.pointerId);cursor.style.cursor='grabbing';ctx.beginPath();ctx.moveTo(...pos(e))};
+let curLastX=0,curLastY=0;
+cursor.onpointerdown=e=>{dragging=true;cursor.setPointerCapture(e.pointerId);cursor.style.cursor='grabbing';[curLastX,curLastY]=pos(e);ctx.beginPath();ctx.moveTo(curLastX,curLastY)};
 cursor.onpointermove=e=>{
-  if(!erasing)return;
+  if(!dragging)return;
   placeBox(e.clientX,e.clientY);
-  ctx.globalCompositeOperation='destination-out';
-  ctx.lineWidth=eraserSize.value;
-  ctx.lineTo(...pos(e));ctx.stroke();
+  const[x,y]=pos(e);
+  [curLastX,curLastY]=strokeTo(curLastX,curLastY,x,y,mode);
 };
-cursor.onpointerup=()=>{erasing=false;cursor.style.cursor='grab'};
+cursor.onpointerup=()=>{dragging=false;cursor.style.cursor='grab'};
 
-addEventListener('pointerup',()=>drawing=false);
+addEventListener('pointerup',()=>{drawing=false;dragging=false});
 </script>
 </body></html>
