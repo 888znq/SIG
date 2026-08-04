@@ -188,11 +188,5 @@ cursor.onpointermove=e=>{
 cursor.onpointerup=()=>{dragging=false;cursor.style.cursor='grab';scheduleSave();};
 
 addEventListener('pointerup',()=>{drawing=false;dragging=false;scheduleSave();});
-
-const wipeBtn=document.createElement('button');
-wipeBtn.innerText='🗑';
-wipeBtn.style.cssText='position:fixed;top:12px;right:12px;background:#fff2;border:1px solid #fff;color:#fff;padding:8px 10px;border-radius:50%;cursor:pointer;z-index:6;font-size:16px;';
-wipeBtn.onclick=()=>{if(confirm('Clear the whole canvas?'))clearCanvas();};
-document.body.appendChild(wipeBtn);
 </script>
 </body></html>
