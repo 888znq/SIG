@@ -16,12 +16,15 @@ input[type=range]{width:70px}
 #resizeHandle{position:absolute;bottom:14.64%;right:14.64%;transform:translate(50%,50%);width:16px;height:16px;background:#fff;border:2px solid #000342;border-radius:50%;cursor:nwse-resize;touch-action:none;z-index:4}
 #toggleHandle{position:absolute;top:-10px;left:-10px;width:20px;height:20px;background:#fff;border:2px solid #000342;border-radius:50%;cursor:pointer;touch-action:none;z-index:5;display:none;align-items:center;justify-content:center}
 #toggleHandle svg{width:12px;height:12px;fill:none;stroke:#000342;stroke-width:2}
+#closeHandle{position:absolute;top:14.64%;right:14.64%;transform:translate(50%,-50%);width:16px;height:16px;background:#fff;border:2px solid #000342;border-radius:50%;cursor:pointer;touch-action:none;z-index:4;display:flex;align-items:center;justify-content:center}
+#closeHandle svg{width:10px;height:10px;fill:none;stroke:#000342;stroke-width:2}
 </style></head>
 <body>
 <canvas id="c"></canvas>
 <div id="cursor">
   <div id="toggleHandle"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
-  <div id="resizeHandle"></div>
+    <div id="closeHandle"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+    <div id="resizeHandle"></div>
 </div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -88,6 +91,7 @@ let mode='pen',dragging=false,drawing=false;
 const cursor=document.getElementById('cursor');
 const resizeHandle=document.getElementById('resizeHandle');
 const toggleHandle=document.getElementById('toggleHandle');
+const closeHandle=document.getElementById('closeHandle');
 let eraserSizeVal=45,penSizeVal=4;
 let cursorVisible=false;
 
@@ -97,6 +101,12 @@ const applyModeVisual=()=>{
   cursor.classList.toggle('eraseMode',mode==='eraser');
   const size=mode==='eraser'?eraserSizeVal:penSizeVal;
   cursor.style.width=cursor.style.height=size+'px';
+  const hSize=Math.max(14,Math.min(34,size*0.28));
+  resizeHandle.style.width=resizeHandle.style.height=hSize+'px';
+  closeHandle.style.width=closeHandle.style.height=hSize+'px';
+  const iconSize=hSize*0.6;
+  const closeSvg=closeHandle.querySelector('svg');
+  closeSvg.style.width=closeSvg.style.height=iconSize+'px';
 };
 const setSize=v=>{
   const clamped=mode==='eraser'?Math.max(5,Math.min(300,v)):Math.max(1,Math.min(80,v));
@@ -112,6 +122,11 @@ toggleHandle.onpointerdown=e=>{
   e.stopPropagation();
   mode=mode==='pen'?'eraser':'pen';
   applyModeVisual();
+};
+
+closeHandle.onpointerdown=e=>{
+  e.stopPropagation();
+  hideCursor();
 };
 
 let resizing=false,startDist=0,startSize=0;
